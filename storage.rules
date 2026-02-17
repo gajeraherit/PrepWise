@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Interview recordings - allow authenticated users to upload and read
+    match /interviews/{interviewId}/{allPaths=**} {
+      // Allow authenticated users to upload their interview recordings
+      allow write: if request.auth != null;
+      // Allow authenticated users (HR and candidates) to read recordings
+      allow read: if request.auth != null;
+    }
+
+    // Resume uploads
+    match /resumes/{userId}/{allPaths=**} {
+      // Allow users to upload their own resumes
+      allow write: if request.auth != null && request.auth.uid == userId;
+      // Allow authenticated users (HR and candidates) to view resumes
+      allow read: if request.auth != null;
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

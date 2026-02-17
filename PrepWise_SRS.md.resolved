@@ -1,0 +1,1222 @@
+# Software Requirements Specification (SRS)
+## PrepWise - AI Mock Interview Platform
+
+**Version:** 1.0  
+**Date:** February 13, 2026  
+**Document Status:** Final
+
+---
+
+## Table of Contents
+
+1. [Introduction](#1-introduction)
+2. [Overall Description](#2-overall-description)
+3. [System Features](#3-system-features)
+4. [External Interface Requirements](#4-external-interface-requirements)
+5. [System Architecture](#5-system-architecture)
+6. [Data Requirements](#6-data-requirements)
+7. [Non-Functional Requirements](#7-non-functional-requirements)
+8. [Appendices](#8-appendices)
+
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+This Software Requirements Specification (SRS) document provides a comprehensive description of the PrepWise AI Mock Interview Platform. It defines the functional and non-functional requirements, system architecture, and design constraints for the platform that enables candidates to practice interviews with AI, HR teams to manage recruitment, and administrators to oversee the system.
+
+### 1.2 Scope
+
+**Product Name:** PrepWise - AI Mock Interview Platform
+
+**Product Description:** A full-stack SaaS platform that leverages artificial intelligence to provide realistic mock interviews, instant feedback, and recruitment management tools.
+
+**Key Goals:**
+- Enable candidates to practice interviews in a safe, AI-powered environment
+- Provide HR teams with tools to manage job postings and evaluate candidates
+- Offer administrators complete platform oversight and analytics
+- Deliver real-time voice interactions using advanced AI technologies
+- Generate detailed, actionable feedback to improve interview performance
+
+**Benefits:**
+- 24/7 availability for interview practice
+- Cost-effective alternative to traditional coaching
+- Standardized evaluation metrics
+- Data-driven hiring decisions
+- Scalable platform for enterprise use
+
+### 1.3 Definitions, Acronyms, and Abbreviations
+
+| Term | Definition |
+|------|------------|
+| **SRS** | Software Requirements Specification |
+| **AI** | Artificial Intelligence |
+| **UI** | User Interface |
+| **API** | Application Programming Interface |
+| **RBAC** | Role-Based Access Control |
+| **SaaS** | Software as a Service |
+| **HR** | Human Resources |
+| **STT** | Speech-to-Text |
+| **TTS** | Text-to-Speech |
+| **Firestore** | Google Cloud Firestore (NoSQL database) |
+| **Gemini** | Google's Generative AI model |
+| **Vapi** | Voice AI Platform Integration |
+
+### 1.4 References
+
+- Next.js 16 Documentation: https://nextjs.org/docs
+- Firebase Documentation: https://firebase.google.com/docs
+- Google Gemini AI: https://ai.google.dev/
+- Vapi AI Documentation: https://docs.vapi.ai/
+
+### 1.5 Overview
+
+This document is organized into eight main sections covering introduction, system overview, functional requirements, interfaces, architecture, data models, non-functional requirements, and appendices.
+
+---
+
+## 2. Overall Description
+
+### 2.1 Product Perspective
+
+PrepWise is a standalone web-based SaaS platform that integrates with:
+- **Firebase** for authentication, database, and file storage
+- **Google Gemini AI** for intelligent question generation and feedback analysis
+- **Vapi AI** for real-time voice interview capabilities
+- **Cloudinary** for video/media storage and delivery
+
+### 2.2 Product Functions
+
+The system serves three primary user roles:
+
+**Candidates:**
+- Create and manage profile
+- Upload resume and skills
+- Create mock interview sessions
+- Conduct voice-based AI interviews
+- View detailed feedback and analytics
+- Track progress over time
+- Download PDF reports
+
+**HR/Recruiters:**
+- Manage company profile
+- Create and publish job openings
+- Invite candidates to interviews
+- Review interview recordings and transcripts
+- Access candidate performance reports
+- Shortlist and rate candidates
+- Manage team members
+
+**Administrators:**
+- Manage all users (approve, suspend, delete)
+- View platform-wide analytics
+- Configure system settings
+- Enable/disable features
+- Monitor system health
+- Manage subscriptions
+
+### 2.3 User Classes and Characteristics
+
+```mermaid
+graph TD
+    A[Users] --> B[Candidate]
+    A --> C[HR/Recruiter]
+    A --> D[Admin]
+    
+    B --> B1[Job Seekers]
+    B --> B2[Career Switchers]
+    B --> B3[Students]
+    
+    C --> C1[Hiring Managers]
+    C --> C2[Recruiters]
+    C --> C3[Talent Acquisition]
+    
+    D --> D1[System Administrator]
+    D --> D2[Platform Manager]
+    
+    style B fill:#10b981,stroke:#059669,color:#fff
+    style C fill:#3b82f6,stroke:#2563eb,color:#fff
+    style D fill:#ef4444,stroke:#dc2626,color:#fff
+```
+
+### 2.4 Operating Environment
+
+**Client-side:**
+- Modern web browsers (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
+- JavaScript enabled
+- Microphone access for voice interviews
+- Minimum screen resolution: 375x667 (mobile), 1024x768 (desktop)
+
+**Server-side:**
+- Node.js 18+ runtime
+- Vercel serverless deployment
+- Firebase Cloud Firestore
+- Firebase Authentication
+- Firebase Storage / Cloudinary
+
+### 2.5 Design and Implementation Constraints
+
+- Must comply with GDPR and data privacy regulations
+- Must use Firebase for backend services
+- Real-time voice processing requires stable internet connection (min 1 Mbps)
+- Browser must support WebRTC for voice functionality
+- Must implement role-based access control
+- Must support responsive design for mobile and desktop
+
+### 2.6 Assumptions and Dependencies
+
+**Assumptions:**
+- Users have reliable internet connectivity
+- Users have functional microphones for voice interviews
+- Firebase services remain available and operational
+- AI API services (Gemini, Vapi) maintain uptime
+
+**Dependencies:**
+- Firebase Authentication and Firestore
+- Google Gemini API availability
+- Vapi AI service availability
+- Cloudinary service for media storage
+- Third-party npm packages and libraries
+
+---
+
+## 3. System Features
+
+### 3.1 User Management
+
+#### 3.1.1 User Registration
+
+**Priority:** High  
+**Description:** Allow new users to register with email/password
+
+**Functional Requirements:**
+- **FR-1.1:** System shall accept email and password for registration
+- **FR-1.2:** System shall validate email format and password strength
+- **FR-1.3:** System shall allow users to select role (Candidate or HR)
+- **FR-1.4:** System shall send verification email
+- **FR-1.5:** HR registrations shall require admin approval
+- **FR-1.6:** System shall create user profile in Firestore upon successful registration
+
+**Use Case Diagram:**
+
+```mermaid
+graph LR
+    U[User] -->|Register| S1[Registration Form]
+    S1 -->|Submit| S2{Validate Input}
+    S2 -->|Valid| S3[Create Account]
+    S2 -->|Invalid| S4[Show Error]
+    S3 -->|Candidate| S5[Activate Account]
+    S3 -->|HR| S6[Pending Approval]
+    S5 --> S7[Redirect to Dashboard]
+    S6 --> S8[Notify Admin]
+    
+    style S3 fill:#10b981,stroke:#059669,color:#fff
+    style S4 fill:#ef4444,stroke:#dc2626,color:#fff
+```
+
+#### 3.1.2 User Authentication
+
+**Priority:** High  
+**Description:** Secure login/logout functionality
+
+**Functional Requirements:**
+- **FR-1.7:** System shall authenticate users via Firebase Authentication
+- **FR-1.8:** System shall support email/password login
+- **FR-1.9:** System shall provide "Forgot Password" functionality
+- **FR-1.10:** System shall maintain session state
+- **FR-1.11:** System shall redirect users based on role after login
+- **FR-1.12:** System shall provide logout functionality
+
+#### 3.1.3 Profile Management
+
+**Priority:** Medium  
+**Description:** Users can view and update their profiles
+
+**Functional Requirements:**
+- **FR-1.13:** Users shall be able to update display name and photo
+- **FR-1.14:** Candidates shall be able to add skills, experience level, and years of experience
+- **FR-1.15:** Candidates shall be able to upload/update resume (PDF)
+- **FR-1.16:** HR users shall be able to add company information
+- **FR-1.17:** System shall validate file uploads (type, size)
+
+### 3.2 Interview Management (Candidate)
+
+#### 3.2.1 Create Interview Session
+
+**Priority:** High  
+**Description:** Candidates can create customized mock interview sessions
+
+**Functional Requirements:**
+- **FR-2.1:** System shall allow candidates to specify job role
+- **FR-2.2:** System shall allow selection of technology stack (multiple)
+- **FR-2.3:** System shall allow selection of experience level
+- **FR-2.4:** System shall allow duration selection (15, 30, 45, 60 minutes)
+- **FR-2.5:** System shall generate role-specific questions using Gemini AI
+- **FR-2.6:** System shall create interview document in Firestore
+
+**Sequence Diagram - Interview Creation:**
+
+```mermaid
+sequenceDiagram
+    participant C as Candidate
+    participant UI as Frontend
+    participant API as API Route
+    participant Gemini as Gemini AI
+    participant DB as Firestore
+    
+    C->>UI: Fill interview form
+    UI->>API: POST /api/interviews/create
+    API->>API: Validate input
+    API->>Gemini: Generate questions
+    Gemini-->>API: Return questions
+    API->>DB: Create interview doc
+    DB-->>API: Interview ID
+    API-->>UI: Success + Interview ID
+    UI-->>C: Redirect to interview
+```
+
+#### 3.2.2 Conduct Voice Interview
+
+**Priority:** High  
+**Description:** Real-time voice-based interview with AI
+
+**Functional Requirements:**
+- **FR-2.7:** System shall initialize Vapi AI client with assistant ID
+- **FR-2.8:** System shall request microphone permission
+- **FR-2.9:** System shall start voice conversation when user clicks "Start Interview"
+- **FR-2.10:** System shall display questions one by one
+- **FR-2.11:** System shall capture audio responses and convert to text
+- **FR-2.12:** System shall provide visual feedback during recording
+- **FR-2.13:** System shall allow users to end interview early
+- **FR-2.14:** System shall save transcript to Firestore
+- **FR-2.15:** System shall update interview status to "completed"
+
+#### 3.2.3 View Feedback
+
+**Priority:** High  
+**Description:** Display detailed AI-generated feedback
+
+**Functional Requirements:**
+- **FR-2.16:** System shall generate feedback upon interview completion
+- **FR-2.17:** System shall display overall score (0-100)
+- **FR-2.18:** System shall display category scores (communication, technical, problem-solving, confidence)
+- **FR-2.19:** System shall display strengths and weaknesses
+- **FR-2.20:** System shall provide improvement tips
+- **FR-2.21:** System shall allow PDF download of feedback
+- **FR-2.22:** System shall display transcript with question-answer pairs
+
+### 3.3 Job and Candidate Management (HR)
+
+#### 3.3.1 Job Posting Management
+
+**Priority:** High  
+**Description:** HR can create and manage job openings
+
+**Functional Requirements:**
+- **FR-3.1:** HR shall be able to create new job posting
+- **FR-3.2:** System shall require job title, description, requirements, tech stack
+- **FR-3.3:** HR shall be able to set experience level, location, salary range
+- **FR-3.4:** HR shall be able to publish, draft, or close job postings
+- **FR-3.5:** HR shall be able to edit existing job postings
+- **FR-3.6:** HR shall be able to delete job postings
+- **FR-3.7:** System shall display list of all jobs for the HR's company
+
+#### 3.3.2 Candidate Invitation
+
+**Priority:** Medium  
+**Description:** HR can invite candidates to interview for specific job
+
+**Functional Requirements:**
+- **FR-3.8:** HR shall be able to send interview invitation via email
+- **FR-3.9:** System shall allow HR to include custom message
+- **FR-3.10:** System shall set expiration date for invitation
+- **FR-3.11:** System shall track invitation status (pending, accepted, declined, expired)
+- **FR-3.12:** System shall notify HR when invitation is accepted
+
+#### 3.3.3 Candidate Review
+
+**Priority:** High  
+**Description:** HR can review candidate interview results
+
+**Functional Requirements:**
+- **FR-3.13:** HR shall view list of all candidates who interviewed
+- **FR-3.14:** HR shall view candidate profile and resume
+- **FR-3.15:** HR shall view interview feedback and scores
+- **FR-3.16:** HR shall view interview transcript
+- **FR-3.17:** HR shall view interview recording (if available)
+- **FR-3.18:** HR shall be able to rate candidates (1-5 stars)
+- **FR-3.19:** HR shall be able to add notes
+- **FR-3.20:** HR shall be able to shortlist candidates
+
+### 3.4 Administrative Functions
+
+#### 3.4.1 User Management
+
+**Priority:** High  
+**Description:** Admin can manage all platform users
+
+**Functional Requirements:**
+- **FR-4.1:** Admin shall view all users with filters (role, status)
+- **FR-4.2:** Admin shall approve pending HR accounts
+- **FR-4.3:** Admin shall suspend or activate user accounts
+- **FR-4.4:** Admin shall delete user accounts
+- **FR-4.5:** Admin shall view user details and activity
+
+#### 3.4.2 Platform Analytics
+
+**Priority:** Medium  
+**Description:** Admin can view system-wide metrics
+
+**Functional Requirements:**
+- **FR-4.6:** Admin shall view total users count (by role)
+- **FR-4.7:** Admin shall view total interviews conducted
+- **FR-4.8:** Admin shall view total companies registered
+- **FR-4.9:** Admin shall view total jobs posted
+- **FR-4.10:** Admin shall view growth trends over time
+- **FR-4.11:** Admin shall view active vs. inactive users
+
+#### 3.4.3 System Settings
+
+**Priority:** Medium  
+**Description:** Admin can configure platform settings
+
+**Functional Requirements:**
+- **FR-4.12:** Admin shall enable/disable maintenance mode
+- **FR-4.13:** Admin shall enable/disable new registrations
+- **FR-4.14:** Admin shall enable/disable HR registrations
+- **FR-4.15:** Admin shall configure max interview duration
+- **FR-4.16:** Admin shall enable/disable AI features
+- **FR-4.17:** System shall validate and save settings to Firestore
+
+---
+
+## 4. External Interface Requirements
+
+### 4.1 User Interfaces
+
+#### 4.1.1 General UI Requirements
+
+- **UI-1:** All pages shall be responsive (mobile, tablet, desktop)
+- **UI-2:** System shall support dark and light themes
+- **UI-3:** System shall provide smooth transitions and animations
+- **UI-4:** System shall use consistent design system (Tailwind CSS + shadcn/ui)
+- **UI-5:** System shall provide visual feedback for all user actions
+- **UI-6:** System shall display loading states during async operations
+- **UI-7:** System shall show error messages in user-friendly format
+
+#### 4.1.2 Landing Page
+
+- **UI-8:** Display value proposition and key features
+- **UI-9:** Provide "Get Started" and "Sign In" CTAs
+- **UI-10:** Include feature showcase with glassmorphism cards
+- **UI-11:** Display "How It Works" section with step-by-step guide
+- **UI-12:** Include social proof (testimonials, user count)
+
+#### 4.1.3 Dashboard Layouts
+
+**Candidate Dashboard:**
+- Statistics cards (total interviews, average score, improvement)
+- Recent interviews list
+- Quick action buttons (New Interview, View History)
+
+**HR Dashboard:**
+- Statistics cards (active jobs, total candidates, shortlisted)
+- Recent candidates list
+- Active job postings
+- Quick action buttons (Create Job, Invite Candidate)
+
+**Admin Dashboard:**
+- Platform statistics (users, interviews, jobs)
+- Recent user registrations
+- Pending HR approvals
+- System health indicators
+
+### 4.2 Hardware Interfaces
+
+- **HW-1:** Microphone for voice input during interviews
+- **HW-2:** Speakers/headphones for AI voice output
+- **HW-3:** Camera (optional, for future video analysis)
+
+### 4.3 Software Interfaces
+
+#### 4.3.1 Firebase Services
+
+| Service | Purpose | Data Exchange |
+|---------|---------|---------------|
+| **Firebase Authentication** | User authentication | User credentials, session tokens |
+| **Cloud Firestore** | NoSQL database | JSON documents for all collections |
+| **Firebase Storage** | File storage | Resume PDFs, profile photos |
+
+#### 4.3.2 AI Services
+
+| Service | Purpose | API Endpoint |
+|---------|---------|--------------|
+| **Google Gemini AI** | Question generation, feedback analysis | REST API with API key authentication |
+| **Vapi AI** | Real-time voice interviews | WebSocket + REST API |
+
+#### 4.3.3 Media Storage
+
+| Service | Purpose | Integration |
+|---------|---------|-------------|
+| **Cloudinary** | Video recording storage | REST API for upload/retrieval |
+
+### 4.4 Communication Interfaces
+
+- **HTTP/HTTPS:** All client-server communication via HTTPS
+- **WebSocket:** Real-time voice communication via Vapi
+- **REST API:** Standard JSON-based API endpoints
+- **Email:** SMTP for sending notifications (via Firebase or third-party service)
+
+---
+
+## 5. System Architecture
+
+### 5.1 High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        A[Next.js Frontend]
+        A1[React Components]
+        A2[Tailwind CSS]
+        A3[Vapi SDK]
+    end
+    
+    subgraph "Application Layer"
+        B[Next.js API Routes]
+        B1[Authentication Middleware]
+        B2[Interview API]
+        B3[Admin API]
+        B4[HR API]
+    end
+    
+    subgraph "Services Layer"
+        C1[Firebase Auth]
+        C2[Gemini AI Service]
+        C3[Vapi AI Service]
+        C4[Cloudinary Service]
+    end
+    
+    subgraph "Data Layer"
+        D[Cloud Firestore]
+        D1[Users Collection]
+        D2[Interviews Collection]
+        D3[Feedback Collection]
+        D4[Jobs Collection]
+    end
+    
+    A --> B
+    A --> A3
+    B --> B1
+    B --> B2
+    B --> B3
+    B --> B4
+    B --> C1
+    B --> C2
+    B --> D
+    A3 --> C3
+    B2 --> C4
+    
+    style A fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style B fill:#3b82f6,stroke:#2563eb,color:#fff
+    style D fill:#10b981,stroke:#059669,color:#fff
+```
+
+### 5.2 Component Architecture
+
+```mermaid
+graph TD
+    subgraph "Frontend Components"
+        F1[Layout Components]
+        F2[Feature Components]
+        F3[UI Components]
+        F4[Hooks]
+    end
+    
+    subgraph "Backend Services"
+        B1[Auth Service]
+        B2[Interview Service]
+        B3[Feedback Service]
+        B4[User Service]
+    end
+    
+    subgraph "External Services"
+        E1[Firebase]
+        E2[Gemini AI]
+        E3[Vapi AI]
+        E4[Cloudinary]
+    end
+    
+    F2 --> B1
+    F2 --> B2
+    F2 --> B3
+    F2 --> B4
+    
+    B1 --> E1
+    B2 --> E1
+    B2 --> E2
+    B2 --> E3
+    B2 --> E4
+    B3 --> E1
+    B3 --> E2
+    B4 --> E1
+    
+    style F1 fill:#f59e0b,stroke:#d97706,color:#000
+    style B1 fill:#3b82f6,stroke:#2563eb,color:#fff
+    style E1 fill:#ef4444,stroke:#dc2626,color:#fff
+```
+
+### 5.3 Use Case Diagram
+
+```mermaid
+graph TB
+    subgraph "Candidate Use Cases"
+        UC1[Register/Login]
+        UC2[Create Interview]
+        UC3[Conduct Interview]
+        UC4[View Feedback]
+        UC5[Track Progress]
+        UC6[Update Profile]
+    end
+    
+    subgraph "HR Use Cases"
+        UC7[Create Job Posting]
+        UC8[Invite Candidates]
+        UC9[Review Candidates]
+        UC10[Shortlist Candidates]
+        UC11[View Analytics]
+    end
+    
+    subgraph "Admin Use Cases"
+        UC12[Approve HR Users]
+        UC13[Manage Users]
+        UC14[View Platform Analytics]
+        UC15[Configure Settings]
+        UC16[Monitor System]
+    end
+    
+    C[Candidate] --> UC1
+    C --> UC2
+    C --> UC3
+    C --> UC4
+    C --> UC5
+    C --> UC6
+    
+    H[HR] --> UC1
+    H --> UC7
+    H --> UC8
+    H --> UC9
+    H --> UC10
+    H --> UC11
+    
+    A[Admin] --> UC1
+    A --> UC12
+    A --> UC13
+    A --> UC14
+    A --> UC15
+    A --> UC16
+    
+    style C fill:#10b981,stroke:#059669,color:#fff
+    style H fill:#3b82f6,stroke:#2563eb,color:#fff
+    style A fill:#ef4444,stroke:#dc2626,color:#fff
+```
+
+### 5.4 Sequence Diagram - Complete Interview Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Candidate
+    participant UI as Frontend
+    participant API as API Routes
+    participant Gemini as Gemini AI
+    participant Vapi as Vapi AI
+    participant DB as Firestore
+    
+    Note over C,DB: Interview Creation
+    C->>UI: Create Interview
+    UI->>API: POST /api/interviews/create
+    API->>Gemini: Generate questions
+    Gemini-->>API: Questions array
+    API->>DB: Save interview
+    DB-->>API: Interview ID
+    API-->>UI: Interview created
+    
+    Note over C,DB: Interview Execution
+    C->>UI: Start Interview
+    UI->>Vapi: Initialize call
+    Vapi-->>UI: Connection established
+    UI->>C: Display question
+    C->>Vapi: Voice response
+    Vapi->>UI: Transcribed text
+    UI->>DB: Save transcript
+    
+    Note over C,DB: Feedback Generation
+    UI->>API: POST /api/ai/generate-feedback
+    API->>Gemini: Analyze responses
+    Gemini-->>API: Feedback data
+    API->>DB: Save feedback
+    DB-->>API: Feedback ID
+    API-->>UI: Feedback ready
+    UI-->>C: Display feedback
+```
+
+### 5.5 Deployment Architecture
+
+```mermaid
+graph TB
+    subgraph "Client Side"
+        U[User Browser] --> V[Vercel CDN]
+    end
+    
+    subgraph "Vercel Platform"
+        V --> N[Next.js App]
+        N --> SR[Serverless Routes]
+        N --> SSR[Server-Side Rendering]
+    end
+    
+    subgraph "Firebase Services"
+        SR --> FA[Firebase Auth]
+        SR --> FS[Firestore DB]
+        SR --> FST[Firebase Storage]
+    end
+    
+    subgraph "Third-Party APIs"
+        SR --> G[Gemini AI]
+        SR --> VP[Vapi AI]
+        SR --> CL[Cloudinary]
+    end
+    
+    style V fill:#000,stroke:#fff,color:#fff
+    style N fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style FA fill:#FFA611,stroke:#ff8800,color:#000
+    style FS fill:#FFA611,stroke:#ff8800,color:#000
+```
+
+---
+
+## 6. Data Requirements
+
+### 6.1 Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    USER ||--o{ INTERVIEW : creates
+    USER ||--o{ SUBSCRIPTION : has
+    USER ||--o{ COMPANY : creates
+    COMPANY ||--o{ JOB : has
+    JOB ||--o{ INVITATION : generates
+    JOB ||--o{ APPLICATION : receives
+    USER ||--o{ APPLICATION : submits
+    INTERVIEW ||--|| FEEDBACK : generates
+    COMPANY ||--o{ INVITATION : sends
+    
+    USER {
+        string uid PK
+        string email
+        string displayName
+        enum role
+        enum status
+        timestamp createdAt
+        string resumeURL
+        string companyId FK
+    }
+    
+    COMPANY {
+        string id PK
+        string name
+        string industry
+        string createdBy FK
+        timestamp createdAt
+    }
+    
+    JOB {
+        string id PK
+        string companyId FK
+        string title
+        array techStack
+        enum status
+        timestamp createdAt
+    }
+    
+    INTERVIEW {
+        string id PK
+        string candidateId FK
+        string jobRole
+        array questions
+        array transcript
+        enum status
+        timestamp completedAt
+    }
+    
+    FEEDBACK {
+        string id PK
+        string interviewId FK
+        number overallScore
+        array strengths
+        array weaknesses
+        timestamp createdAt
+    }
+    
+    INVITATION {
+        string id PK
+        string jobId FK
+        string candidateEmail
+        enum status
+        timestamp expiresAt
+    }
+    
+    APPLICATION {
+        string id PK
+        string jobId FK
+        string candidateId FK
+        enum status
+        timestamp appliedAt
+    }
+    
+    SUBSCRIPTION {
+        string id PK
+        string userId FK
+        enum plan
+        number interviewsUsed
+        timestamp currentPeriodEnd
+    }
+```
+
+### 6.2 Data Dictionary
+
+#### 6.2.1 Users Collection
+
+| Field | Type | Description | Constraints |
+|-------|------|-------------|-------------|
+| uid | string | Unique user identifier | Primary Key, Auto-generated by Firebase |
+| email | string | User email address | Required, Unique, Valid email format |
+| displayName | string | User's full name | Required, Max 100 chars |
+| role | enum | User role | Required, One of: 'candidate', 'hr', 'admin' |
+| status | enum | Account status | Required, One of: 'active', 'pending', 'suspended' |
+| skills | array | List of skills (candidates) | Optional, Array of strings |
+| experienceLevel | enum | Experience level | Optional, One of: 'entry', 'mid', 'senior', 'expert' |
+| resumeURL | string | URL to resume PDF | Optional, Valid URL |
+| companyId | string | Associated company (HR) | Optional, Foreign Key to companies |
+| createdAt | timestamp | Account creation time | Auto-generated |
+| updatedAt | timestamp | Last update time | Auto-updated |
+
+#### 6.2.2 Interviews Collection
+
+| Field | Type | Description | Constraints |
+|-------|------|-------------|-------------|
+| id | string | Interview identifier | Primary Key, Auto-generated |
+| candidateId | string | Candidate user ID | Required, Foreign Key to users |
+| jobRole | string | Target job role | Required, Max 200 chars |
+| techStack | array | Technologies | Required, Array of strings |
+| experienceLevel | enum | Target experience level | Required |
+| duration | number | Interview duration (minutes) | Required, One of: 15, 30, 45, 60 |
+| questions | array | Interview questions | Auto-generated, Array of objects |
+| transcript | array | Q&A transcript | Auto-populated, Array of objects |
+| status | enum | Interview state | Required, One of: 'scheduled', 'in-progress', 'completed', 'cancelled' |
+| startedAt | timestamp | Start time | Auto-set on start |
+| completedAt | timestamp | Completion time | Auto-set on completion |
+| recordingUrl | string | Video recording URL | Optional |
+
+#### 6.2.3 Feedback Collection
+
+| Field | Type | Description | Constraints |
+|-------|------|-------------|-------------|
+| id | string | Feedback identifier | Primary Key, Auto-generated |
+| interviewId | string | Associated interview | Required, Foreign Key to interviews |
+| overallScore | number | Overall performance score | Required, Range: 0-100 |
+| communicationScore | number | Communication rating | Required, Range: 0-100 |
+| technicalScore | number | Technical accuracy | Required, Range: 0-100 |
+| problemSolvingScore | number | Problem-solving ability | Required, Range: 0-100 |
+| strengths | array | List of strengths | Auto-generated, Array of strings |
+| weaknesses | array | Areas for improvement | Auto-generated, Array of strings |
+| improvementTips | array | Actionable advice | Auto-generated, Array of strings |
+| aiAnalysis | string | Detailed AI analysis | Auto-generated, Max 5000 chars |
+
+### 6.3 Data Flow Diagram
+
+```mermaid
+graph LR
+    subgraph "Input"
+        I1[User Input]
+        I2[Voice Audio]
+        I3[Resume Upload]
+    end
+    
+    subgraph "Processing"
+        P1[Validation]
+        P2[AI Processing]
+        P3[Data Transformation]
+    end
+    
+    subgraph "Storage"
+        S1[Firestore]
+        S2[Firebase Storage]
+        S3[Cloudinary]
+    end
+    
+    subgraph "Output"
+        O1[Dashboard]
+        O2[Feedback Report]
+        O3[Analytics]
+    end
+    
+    I1 --> P1
+    I2 --> P2
+    I3 --> P1
+    
+    P1 --> P3
+    P2 --> P3
+    
+    P3 --> S1
+    I3 --> S2
+    I2 --> S3
+    
+    S1 --> O1
+    S1 --> O2
+    S1 --> O3
+    
+    style P2 fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style S1 fill:#10b981,stroke:#059669,color:#fff
+```
+
+---
+
+## 7. Non-Functional Requirements
+
+### 7.1 Performance Requirements
+
+**NFR-1: Response Time**
+- Page load time: < 2 seconds for initial load
+- API response time: < 500ms for standard queries
+- AI question generation: < 5 seconds
+- Feedback generation: < 10 seconds
+
+**NFR-2: Throughput**
+- Support 1000+ concurrent users
+- Handle 100+ simultaneous interviews
+- Process 10,000+ database operations per minute
+
+**NFR-3: Resource Usage**
+- Client-side bundle size: < 500KB (gzipped)
+- Database read/write optimization
+- Efficient caching strategies
+
+### 7.2 Security Requirements
+
+**NFR-4: Authentication & Authorization**
+- All routes protected with Firebase Authentication
+- Role-based access control (RBAC) enforced server-side
+- Session tokens expire after 24 hours
+- Password requirements: min 8 chars, alphanumeric
+
+**NFR-5: Data Protection**
+- All data transmitted via HTTPS/TLS 1.3
+- API keys stored in environment variables
+- Firestore security rules enforced
+- User data encrypted at rest
+
+**NFR-6: Privacy**
+- GDPR compliance for user data
+- User consent for data collection
+- Right to data deletion
+- Secure handling of personal information
+
+### 7.3 Reliability Requirements
+
+**NFR-7: Availability**
+- System uptime: 99.5% monthly
+- Automatic failover for critical services
+- Graceful degradation when AI services unavailable
+
+**NFR-8: Error Handling**
+- Comprehensive error logging
+- User-friendly error messages
+- Automatic retry for transient failures
+- Rollback capabilities for failed transactions
+
+**NFR-9: Backup & Recovery**
+- Daily automated Firestore backups
+- Point-in-time recovery capability
+- Disaster recovery plan documented
+
+### 7.4 Maintainability Requirements
+
+**NFR-10: Code Quality**
+- TypeScript for type safety
+- ESLint for code linting
+- Consistent code formatting
+- Component-based architecture
+
+**NFR-11: Documentation**
+- API documentation for all endpoints
+- Code comments for complex logic
+- README for setup instructions
+- Architecture diagrams maintained
+
+**NFR-12: Testability**
+- Unit tests for critical functions
+- Integration tests for API routes
+- Manual testing procedures documented
+
+### 7.5 Usability Requirements
+
+**NFR-13: User Experience**
+- Intuitive navigation structure
+- Consistent UI/UX across all pages
+- Mobile-responsive design (375px+)
+- Accessibility: WCAG 2.1 Level AA compliance
+
+**NFR-14: Feedback & Guidance**
+- Clear error messages with resolution steps
+- Loading states for async operations
+- Success confirmations for actions
+- Helpful tooltips and help text
+
+**NFR-15: Internationalization**
+- UTF-8 character encoding
+- Date/time formatting based on locale
+- Future support for multi-language (planned)
+
+### 7.6 Scalability Requirements
+
+**NFR-16: Horizontal Scaling**
+- Serverless architecture on Vercel
+- Auto-scaling based on demand
+- Stateless API design
+
+**NFR-17: Database Scaling**
+- Firestore automatic sharding
+- Indexed queries for performance
+- Denormalization where appropriate
+
+### 7.7 Compatibility Requirements
+
+**NFR-18: Browser Compatibility**
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
+- Mobile browsers (iOS Safari, Chrome Mobile)
+
+**NFR-19: Device Compatibility**
+- Desktop (Windows, macOS, Linux)
+- Tablets (iPad, Android tablets)
+- Mobile phones (iOS, Android)
+
+### 7.8 Compliance Requirements
+
+**NFR-20: Legal & Regulatory**
+- GDPR compliance (EU)
+- CCPA compliance (California)
+- Data retention policies
+- Terms of Service and Privacy Policy
+
+---
+
+## 8. Appendices
+
+### 8.1 Class Diagram
+
+```mermaid
+classDiagram
+    class User {
+        +string uid
+        +string email
+        +string displayName
+        +UserRole role
+        +UserStatus status
+        +string[] skills
+        +string resumeURL
+        +register()
+        +login()
+        +updateProfile()
+    }
+    
+    class Candidate {
+        +createInterview()
+        +viewFeedback()
+        +downloadReport()
+        +trackProgress()
+    }
+    
+    class HR {
+        +string companyId
+        +createJob()
+        +inviteCandidate()
+        +reviewCandidates()
+        +shortlistCandidate()
+    }
+    
+    class Admin {
+        +approveHR()
+        +manageUsers()
+        +viewAnalytics()
+        +configureSettings()
+    }
+    
+    class Interview {
+        +string id
+        +string candidateId
+        +string jobRole
+        +Question[] questions
+        +Transcript[] transcript
+        +InterviewStatus status
+        +start()
+        +complete()
+        +cancel()
+    }
+    
+    class Feedback {
+        +string id
+        +string interviewId
+        +number overallScore
+        +number[] categoryScores
+        +string[] strengths
+        +string[] weaknesses
+        +generate()
+        +export()
+    }
+    
+    class Job {
+        +string id
+        +string companyId
+        +string title
+        +string[] techStack
+        +JobStatus status
+        +create()
+        +update()
+        +close()
+    }
+    
+    class Company {
+        +string id
+        +string name
+        +string industry
+        +create()
+        +update()
+    }
+    
+    User <|-- Candidate
+    User <|-- HR
+    User <|-- Admin
+    Candidate "1" --> "*" Interview : creates
+    Interview "1" --> "1" Feedback : generates
+    HR "1" --> "*" Job : manages
+    HR "*" --> "1" Company : belongs to
+    Company "1" --> "*" Job : has
+```
+
+### 8.2 State Diagram - Interview Status
+
+```mermaid
+stateDiagram-v2
+    [*] --> Scheduled: Create Interview
+    Scheduled --> InProgress: Start Interview
+    Scheduled --> Cancelled: Cancel
+    InProgress --> Completed: End Interview
+    InProgress --> Cancelled: Abort
+    Completed --> [*]: Feedback Generated
+    Cancelled --> [*]
+    
+    note right of InProgress
+        Recording audio
+        Capturing transcript
+        Monitoring duration
+    end note
+    
+    note right of Completed
+        Generate feedback
+        Calculate scores
+        Save to database
+    end note
+```
+
+### 8.3 Technology Stack Summary
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **Frontend** | Next.js 16 | React framework with App Router |
+| **Language** | TypeScript | Type-safe development |
+| **Styling** | Tailwind CSS | Utility-first CSS |
+| **UI Components** | shadcn/ui | Pre-built accessible components |
+| **State** | React Hooks | Local state management |
+| **Auth** | Firebase Auth | User authentication |
+| **Database** | Cloud Firestore | NoSQL document database |
+| **Storage** | Firebase Storage, Cloudinary | File and media storage |
+| **AI - Questions** | Google Gemini | Question generation, feedback |
+| **AI - Voice** | Vapi AI | Real-time voice interviews |
+| **Deployment** | Vercel | Serverless hosting |
+| **Email** | Firebase/SMTP | Notifications |
+
+### 8.4 API Endpoints Summary
+
+#### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `POST /api/auth/logout` - User logout
+- `POST /api/auth/reset-password` - Password reset
+
+#### Interviews
+- `POST /api/interviews/create` - Create interview
+- `GET /api/interviews/:id` - Get interview details
+- `GET /api/interviews/list` - List user interviews
+- `PATCH /api/interviews/:id/status` - Update status
+- `DELETE /api/interviews/:id` - Delete interview
+
+#### Feedback
+- `POST /api/ai/generate-feedback` - Generate AI feedback
+- `GET /api/feedback/:interviewId` - Get feedback
+- `GET /api/feedback/:id/download` - Download PDF
+
+#### Jobs (HR)
+- `POST /api/hr/jobs/create` - Create job
+- `GET /api/hr/jobs/list` - List jobs
+- `PATCH /api/hr/jobs/:id` - Update job
+- `DELETE /api/hr/jobs/:id` - Delete job
+
+#### Candidates (HR)
+- `POST /api/hr/invite` - Invite candidate
+- `GET /api/hr/candidates` - List candidates
+- `PATCH /api/hr/candidates/:id/shortlist` - Shortlist
+
+#### Admin
+- `GET /api/admin/users` - List all users
+- `PATCH /api/admin/users/:id/approve` - Approve HR
+- `PATCH /api/admin/users/:id/suspend` - Suspend user
+- `GET /api/admin/analytics` - Platform analytics
+- `PATCH /api/admin/settings` - Update settings
+
+#### Media
+- `POST /api/upload-resume` - Upload resume PDF
+- `POST /api/upload-video` - Upload video recording
+- `GET /api/view-resume/:userId` - View resume
+
+### 8.5 Glossary
+
+| Term | Definition |
+|------|------------|
+| **Candidate** | Job seeker using platform for interview practice |
+| **HR/Recruiter** | Hiring professional managing jobs and candidates |
+| **Mock Interview** | Simulated interview session with AI |
+| **Feedback** | AI-generated analysis of interview performance |
+| **Transcript** | Text record of interview questions and answers |
+| **Shortlist** | HR-curated list of preferred candidates |
+| **Tech Stack** | Set of technologies for a job role |
+| **Experience Level** | Career stage: entry, mid, senior, expert |
+| **Gemini** | Google's generative AI for text analysis |
+| **Vapi** | Voice AI platform for real-time conversations |
+| **Firestore** | Google Cloud NoSQL database |
+| **RBAC** | Role-Based Access Control system |
+
+---
+
+## Document Revision History
+
+| Version | Date | Author | Description |
+|---------|------|--------|-------------|
+| 1.0 | Feb 13, 2026 | PrepWise Team | Initial SRS document |
+
+---
+
+**END OF DOCUMENT**

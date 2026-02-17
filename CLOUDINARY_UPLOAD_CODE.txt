@@ -1,0 +1,37 @@
+// Replace lines 275-284 in finishInterview function with this code:
+
+try {
+    // Upload to Cloudinary (free tier: 25GB storage)
+    const formData = new FormData();
+    formData.append('video', videoBlob, 'recording.webm');
+    formData.append('interviewId', params.id as string);
+
+    console.log('📤 Uploading video to Cloudinary...');
+    
+    const uploadResponse = await fetch('/api/upload-video', {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (uploadResponse.ok) {
+        const data = await uploadResponse.json();
+        recordingUrl = data.url;
+        console.log('✅ Video uploaded successfully to Cloudinary:', recordingUrl);
+        
+        toast({
+            title: 'Recording Uploaded!',
+            description: 'Video saved successfully.',
+        });
+    } else {
+        const errorData = await uploadResponse.json();
+        console.error('❌ Upload failed:', errorData);
+        throw new Error(errorData.error || 'Upload failed');
+    }
+} catch (uploadError: any) {
+    console.error('❌ Error uploading video:', uploadError);
+    toast({
+        title: 'Upload Warning',
+        description: 'Video recording upload failed. Interview data saved.',
+        variant: 'destructive',
+    });
+}
