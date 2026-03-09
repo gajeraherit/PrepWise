@@ -156,12 +156,16 @@ export function useProctoring({
         }
     }, [interviewId, onViolation, maxViolations, onMaxViolationsReached]);
 
-    // Enter fullscreen
+    // Enter fullscreen — non-critical, silently ignore if browser blocks it
     const enterFullscreen = useCallback(() => {
-        if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch((err) => {
-                console.error('Fullscreen error:', err);
-                // Don't treat fullscreen failure as critical - just log it
+        if (
+            document.fullscreenEnabled &&
+            document.documentElement.requestFullscreen &&
+            !document.fullscreenElement
+        ) {
+            document.documentElement.requestFullscreen().catch(() => {
+                // Silently ignore: browser may block fullscreen outside a direct
+                // user-gesture stack (e.g. after async permission prompts).
             });
         }
     }, []);
@@ -183,8 +187,10 @@ export function useProctoring({
 
             if (!isFs && permissionsGranted) {
                 logViolation('fullscreen_exit');
-                // Auto re-enter after 1 second
-                setTimeout(enterFullscreen, 1000);
+                // Only auto-re-enter if the browser supports it; don't spam errors
+                if (document.fullscreenEnabled) {
+                    setTimeout(enterFullscreen, 1000);
+                }
             }
         };
 

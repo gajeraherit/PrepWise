@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
             jobRole,
             questions: transcript.map((t: any) => ({ question: t.question })),
             transcript,
+            techStack,
+            experienceLevel,
         });
 
         // Save to Firestore using Admin SDK (bypasses security rules)

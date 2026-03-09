@@ -1,48 +1,71 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { Collections } from '@/lib/firebase/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Mic, MicOff, Circle, CheckCircle2, Sparkles } from 'lucide-react';
+import {
+    Loader2, ArrowLeft, Mic, MicOff, PhoneOff, Sparkles,
+    Volume2, CheckCircle2, Radio,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useProctoring } from '@/hooks/useProctoring';
 import { ProctoringPanel } from '@/components/interview/ProctoringPanel';
 import { ViolationWarning } from '@/components/interview/ViolationWarning';
+import { useVapi } from '@/hooks/useVapi';
+import { buildVapiStartArgs, parseVapiTranscript } from '@/lib/ai/vapi';
 
 export default function InterviewPage() {
     const params = useParams();
     const router = useRouter();
     const { toast } = useToast();
+
+    // ── Interview state ──────────────────────────────────────────────
     const [loading, setLoading] = useState(true);
     const [generatingQuestions, setGeneratingQuestions] = useState(false);
     const [interview, setInterview] = useState<any>(null);
-    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [isRecording, setIsRecording] = useState(false);
-    const [transcript, setTranscript] = useState<Array<{ question: string; answer: string }>>([]);
-    const [currentAnswer, setCurrentAnswer] = useState('');
-    const [recognition, setRecognition] = useState<any>(null);
-    const [useTextInput, setUseTextInput] = useState(false);
+    const [interviewStarted, setInterviewStarted] = useState(false);
     const [showViolationWarning, setShowViolationWarning] = useState(false);
-    const [lastViolationType, setLastViolationType] = useState('');
 
-    // Proctoring hook
+    // ── Proctoring ───────────────────────────────────────────────────
     const proctoring = useProctoring({
         interviewId: params.id as string,
-        onViolation: (count) => {
+        onViolation: () => {
             setShowViolationWarning(true);
             setTimeout(() => setShowViolationWarning(false), 4000);
         },
         maxViolations: 3,
         onMaxViolationsReached: () => {
-            finishInterview(transcript);
+            vapi.stopCall();
         },
     });
 
+    // ── Vapi ─────────────────────────────────────────────────────────
+    const handleCallEnd = useCallback(
+        async (messages: { role: string; content: string }[]) => {
+            if (!interview) return;
+            await finishInterview(messages);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [interview]
+    );
+
+    const vapi = useVapi({
+        onCallEnd: handleCallEnd,
+        onError: (err) => {
+            toast({
+                title: 'Vapi Error',
+                description: err.message,
+                variant: 'destructive',
+            });
+        },
+    });
+
+    // ── Load interview ───────────────────────────────────────────────
     useEffect(() => {
         const fetchInterview = async () => {
             try {
@@ -53,12 +76,9 @@ export default function InterviewPage() {
                     const data = { id: interviewDoc.id, ...interviewDoc.data() } as any;
                     setInterview(data);
 
-                    // Auto-generate questions if not already generated
                     if (!data.questions || data.questions.length === 0) {
                         await generateQuestions(interviewId, data);
                     }
-                } else {
-                    console.error('Interview not found');
                 }
             } catch (error) {
                 console.error('Error fetching interview:', error);
@@ -67,11 +87,10 @@ export default function InterviewPage() {
             }
         };
 
-        if (params.id) {
-            fetchInterview();
-        }
+        if (params.id) fetchInterview();
     }, [params.id]);
 
+    // ── Generate questions ───────────────────────────────────────────
     const generateQuestions = async (interviewId: string, interviewData: any) => {
         setGeneratingQuestions(true);
         try {
@@ -83,6 +102,7 @@ export default function InterviewPage() {
                     jobRole: interviewData.jobRole,
                     techStack: interviewData.techStack,
                     experienceLevel: interviewData.experienceLevel,
+                    duration: interviewData.duration,
                 }),
             });
 
@@ -108,9 +128,9 @@ export default function InterviewPage() {
         }
     };
 
+    // ── Start interview (proctoring + Vapi) ─────────────────────────
     const startInterview = async () => {
         try {
-            // Request proctoring permissions and setup
             const stream = await proctoring.requestPermissions();
 
             if (!stream) {
@@ -122,164 +142,54 @@ export default function InterviewPage() {
                 return;
             }
 
-            // Enter fullscreen
             proctoring.enterFullscreen();
-
-            // Start recording
             proctoring.startRecording();
 
-            // Update interview status
             await updateDoc(doc(db, Collections.INTERVIEWS, params.id as string), {
                 status: 'in-progress',
                 startedAt: new Date(),
             });
-            setInterview({ ...interview, status: 'in-progress' });
-            setCurrentQuestionIndex(0);
 
-            // Initialize speech recognition
-            initializeSpeechRecognition();
+            setInterview((prev: any) => ({ ...prev, status: 'in-progress' }));
+            setInterviewStarted(true);
+
+            // Build Vapi start args: [assistantId, overrides]
+            const [assistantId, overrides] = buildVapiStartArgs({
+                jobRole: interview.jobRole,
+                techStack: interview.techStack,
+                experienceLevel: interview.experienceLevel,
+                duration: interview.duration,
+                questions: interview.questions,
+            });
+
+            // Start Vapi call with assistant ID + dynamic overrides
+            await vapi.startCall(assistantId, overrides);
         } catch (error) {
             console.error('Error starting interview:', error);
-        }
-    };
-
-    const initializeSpeechRecognition = () => {
-        if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            const recognitionInstance = new SpeechRecognition();
-
-            recognitionInstance.continuous = true;
-            recognitionInstance.interimResults = true;
-            recognitionInstance.lang = 'en-US';
-
-            recognitionInstance.onresult = (event: any) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const transcript = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        finalTranscript += transcript + ' ';
-                    } else {
-                        interimTranscript += transcript;
-                    }
-                }
-
-                setCurrentAnswer((prev) => prev + finalTranscript);
-            };
-
-            recognitionInstance.onerror = (event: any) => {
-                console.error('Speech recognition error:', event.error);
-                setIsRecording(false);
-
-                // Provide user-friendly error messages
-                if (event.error === 'network') {
-                    toast({
-                        title: 'Network Error',
-                        description: 'Speech recognition requires an internet connection. Please check your network or use text input.',
-                        variant: 'destructive',
-                    });
-                } else if (event.error === 'not-allowed') {
-                    toast({
-                        title: 'Microphone Access Denied',
-                        description: 'Please allow microphone access to use voice recording.',
-                        variant: 'destructive',
-                    });
-                } else if (event.error === 'no-speech') {
-                    toast({
-                        title: 'No Speech Detected',
-                        description: 'Please try speaking again.',
-                    });
-                }
-            };
-
-            recognitionInstance.onend = () => {
-                if (isRecording) {
-                    recognitionInstance.start();
-                }
-            };
-
-            setRecognition(recognitionInstance);
-        }
-    };
-
-    const toggleRecording = () => {
-        if (!recognition) {
             toast({
-                title: 'Voice Not Supported',
-                description: 'Your browser does not support voice recording. Please use text input.',
+                title: 'Error',
+                description: 'Failed to start interview. Please try again.',
                 variant: 'destructive',
             });
-            return;
-        }
-
-        if (isRecording) {
-            recognition.stop();
-            setIsRecording(false);
-        } else {
-            setCurrentAnswer('');
-            recognition.start();
-            setIsRecording(true);
         }
     };
 
-    const submitAnswer = () => {
-        if (!currentAnswer.trim()) {
-            toast({
-                title: 'Empty Answer',
-                description: 'Please provide an answer before continuing.',
-                variant: 'destructive',
-            });
-            return;
-        }
-
-        if (isRecording) {
-            recognition.stop();
-            setIsRecording(false);
-        }
-
-        handleAnswer(currentAnswer);
-        setCurrentAnswer('');
+    // ── End call manually ────────────────────────────────────────────
+    const endCallManually = () => {
+        vapi.stopCall();
     };
 
-    const handleAnswer = (answer: string) => {
-        const currentQuestion = interview.questions[currentQuestionIndex];
-        const newTranscript = [
-            ...transcript,
-            { question: currentQuestion.question, answer },
-        ];
-        setTranscript(newTranscript);
-
-        if (currentQuestionIndex < interview.questions.length - 1) {
-            setCurrentQuestionIndex(currentQuestionIndex + 1);
-        } else {
-            finishInterview(newTranscript);
-        }
-    };
-
-    const finishInterview = async (finalTranscript: any[]) => {
+    // ── Finish interview (after Vapi call ends) ──────────────────────
+    const finishInterview = async (vapiMessages: { role: string; content: string }[]) => {
         try {
-            // Stop proctoring and get the video blob
             const videoBlob = await proctoring.stopRecording();
             proctoring.exitFullscreen();
 
-            console.log('🎬 Interview finishing - video blob:', {
-                hasBlob: !!videoBlob,
-                size: videoBlob ? `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB` : 'N/A',
-                type: videoBlob?.type
-            });
-
             let recordingUrl = '';
 
-            // Upload video recording if available
             if (videoBlob) {
-                toast({
-                    title: 'Processing...',
-                    description: 'Uploading interview recording...',
-                });
-
+                toast({ title: 'Processing...', description: 'Uploading interview recording...' });
                 try {
-                    // Upload to Cloudinary
                     const formData = new FormData();
                     formData.append('video', videoBlob, 'recording.webm');
                     formData.append('interviewId', params.id as string);
@@ -292,31 +202,23 @@ export default function InterviewPage() {
                     if (uploadResponse.ok) {
                         const data = await uploadResponse.json();
                         recordingUrl = data.url;
-                        console.log('✅ Cloudinary upload success:', recordingUrl);
-                    } else {
-                        throw new Error('Upload failed');
                     }
-
-                    console.log('Video uploaded successfully:', recordingUrl);
-                } catch (uploadError: any) {
-                    console.error('❌ Error uploading video:', uploadError);
-                    toast({
-                        title: 'Upload Warning',
-                        description: 'Video upload failed. Interview data saved.',
-                        variant: 'destructive',
-                    });
+                } catch (uploadError) {
+                    console.error('Error uploading video:', uploadError);
                 }
-            } else {
-                console.warn('⚠️ No video recording captured - camera may not have been enabled');
-                console.warn('💡 Make sure to grant camera/microphone permissions when starting the interview');
             }
 
-            // Update interview status
+            // Parse Vapi transcript into our Q&A format
+            const finalTranscript = parseVapiTranscript(
+                vapiMessages as { role: string; content: string }[],
+                interview.questions
+            );
+
             await updateDoc(doc(db, Collections.INTERVIEWS, params.id as string), {
                 status: 'completed',
                 completedAt: new Date(),
                 transcript: finalTranscript,
-                ...(recordingUrl && { recordingUrl }), // Only add if upload succeeded
+                ...(recordingUrl && { recordingUrl }),
             });
 
             toast({
@@ -324,7 +226,6 @@ export default function InterviewPage() {
                 description: 'Generating your feedback report...',
             });
 
-            // Generate AI feedback
             const feedbackResponse = await fetch('/api/interviews/generate-feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -338,17 +239,11 @@ export default function InterviewPage() {
             });
 
             if (feedbackResponse.ok) {
-                const { feedback } = await feedbackResponse.json();
-
                 toast({
                     title: 'Feedback Generated!',
                     description: 'Redirecting to your feedback...',
                 });
-
-                // Redirect to feedback page
-                setTimeout(() => {
-                    router.push(`/candidate/feedback/${params.id}`);
-                }, 2000);
+                setTimeout(() => router.push(`/candidate/feedback/${params.id}`), 2000);
             } else {
                 throw new Error('Failed to generate feedback');
             }
@@ -359,13 +254,20 @@ export default function InterviewPage() {
                 description: 'Feedback generation failed. Please try again later.',
                 variant: 'destructive',
             });
-
-            setTimeout(() => {
-                router.push('/candidate/dashboard');
-            }, 2000);
+            setTimeout(() => router.push('/candidate/dashboard'), 2000);
         }
     };
 
+    // ── Helpers ──────────────────────────────────────────────────────
+    const isInterviewActive = interview?.status === 'in-progress';
+    const isInterviewReady =
+        interview?.status === 'ready' ||
+        (interview?.questions && interview.questions.length > 0);
+
+    const answeredCount = vapi.messages.filter((m) => m.role === 'user').length;
+    const totalQuestions = interview?.questions?.length || 0;
+
+    // ── Loading ──────────────────────────────────────────────────────
     if (loading || generatingQuestions) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center">
@@ -398,10 +300,7 @@ export default function InterviewPage() {
         );
     }
 
-    const currentQuestion = interview.questions?.[currentQuestionIndex];
-    const isInterviewActive = interview.status === 'in-progress';
-    const isInterviewReady = interview.status === 'ready' || (interview.questions && interview.questions.length > 0);
-
+    // ── Render ───────────────────────────────────────────────────────
     return (
         <div className="min-h-screen p-4 md:p-8">
             <div className="container mx-auto max-w-5xl">
@@ -409,6 +308,7 @@ export default function InterviewPage() {
                     variant="ghost"
                     onClick={() => router.push('/candidate/dashboard')}
                     className="mb-6"
+                    disabled={vapi.isCalling}
                 >
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Dashboard
@@ -421,18 +321,26 @@ export default function InterviewPage() {
                             <div>
                                 <CardTitle className="text-2xl mb-2">{interview.jobRole}</CardTitle>
                                 <p className="text-muted-foreground">
-                                    {interview.techStack?.join(', ')} • {interview.experienceLevel} level • {interview.duration} min
+                                    {interview.techStack?.join(', ')} • {interview.experienceLevel} level •{' '}
+                                    {interview.duration} min
                                 </p>
                             </div>
-                            <Badge variant={isInterviewActive ? 'default' : 'secondary'} className="capitalize">
-                                {interview.status}
+                            <Badge
+                                variant={vapi.isCalling ? 'default' : 'secondary'}
+                                className="capitalize"
+                            >
+                                {vapi.callStatus === 'connecting'
+                                    ? 'Connecting...'
+                                    : vapi.callStatus === 'active'
+                                        ? 'Live'
+                                        : interview.status}
                             </Badge>
                         </div>
                     </CardHeader>
                 </Card>
 
-                {/* Interview Content */}
-                {!isInterviewActive && isInterviewReady && (
+                {/* Ready State */}
+                {!interviewStarted && isInterviewReady && (
                     <Card className="glass">
                         <CardContent className="p-8 text-center">
                             <div className="h-20 w-20 gradient-primary rounded-full flex items-center justify-center mx-auto mb-6">
@@ -440,154 +348,244 @@ export default function InterviewPage() {
                             </div>
                             <h3 className="text-2xl font-bold mb-3">Ready to Start Your Interview?</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {interview.questions?.length} AI-generated questions are ready. The interview will take approximately {interview.duration} minutes.
+                                {totalQuestions} AI-generated questions are ready. The interview will be conducted
+                                by an AI voice interviewer powered by Vapi.
                             </p>
 
-                            <div className="bg-muted/30 rounded-lg p-4 mb-6 max-w-md mx-auto">
-                                <h4 className="font-semibold mb-2">Interview Tips:</h4>
-                                <ul className="text-sm text-left space-y-1 text-muted-foreground">
-                                    <li>• Find a quiet space</li>
-                                    <li>• Speak clearly and confidently</li>
-                                    <li>• Take your time to think before answering</li>
-                                    <li>• Use the STAR method for behavioral questions</li>
+                            <div className="bg-muted/30 rounded-lg p-4 mb-6 max-w-md mx-auto text-left">
+                                <h4 className="font-semibold mb-2">How it works:</h4>
+                                <ul className="text-sm space-y-1 text-muted-foreground">
+                                    <li>🎙️ An AI interviewer will speak each question aloud</li>
+                                    <li>💬 Answer by speaking naturally — Vapi transcribes in real-time</li>
+                                    <li>✅ The interviewer moves to the next question automatically</li>
+                                    <li>📊 Feedback is generated after the interview ends</li>
                                 </ul>
                             </div>
 
-                            <Button onClick={startInterview} size="lg" className="gradient-primary text-white">
-                                <Mic className="mr-2 h-5 w-5" />
-                                Start Interview Now
+                            <Button
+                                onClick={startInterview}
+                                size="lg"
+                                className="gradient-primary text-white"
+                                disabled={vapi.callStatus === 'connecting'}
+                            >
+                                {vapi.callStatus === 'connecting' ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                        Connecting to AI Interviewer...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Mic className="mr-2 h-5 w-5" />
+                                        Start Interview with AI
+                                    </>
+                                )}
                             </Button>
                         </CardContent>
                     </Card>
                 )}
 
-                {/* Active Interview */}
-                {isInterviewActive && currentQuestion && (
+                {/* Active Vapi Interview */}
+                {interviewStarted && vapi.callStatus !== 'ended' && (
                     <div className="space-y-6">
                         {/* Progress */}
                         <Card className="glass">
                             <CardContent className="p-4">
                                 <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm font-medium">Question {currentQuestionIndex + 1} of {interview.questions.length}</span>
-                                    <span className="text-sm text-muted-foreground">{Math.round((currentQuestionIndex / interview.questions.length) * 100)}% Complete</span>
+                                    <span className="text-sm font-medium">
+                                        Questions Answered: {answeredCount} / {totalQuestions}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">
+                                        {totalQuestions > 0
+                                            ? Math.round((answeredCount / totalQuestions) * 100)
+                                            : 0}
+                                        % Complete
+                                    </span>
                                 </div>
                                 <div className="w-full bg-muted rounded-full h-2">
                                     <div
-                                        className="gradient-primary h-2 rounded-full transition-all duration-300"
-                                        style={{ width: `${(currentQuestionIndex / interview.questions.length) * 100}%` }}
+                                        className="gradient-primary h-2 rounded-full transition-all duration-500"
+                                        style={{
+                                            width: `${totalQuestions > 0
+                                                ? (answeredCount / totalQuestions) * 100
+                                                : 0
+                                                }%`,
+                                        }}
                                     />
                                 </div>
                             </CardContent>
                         </Card>
 
-                        {/* Question Card */}
+                        {/* Vapi Voice UI */}
                         <Card className="glass">
-                            <CardHeader>
-                                <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                        <Badge className="mb-3">{currentQuestion.category}</Badge>
-                                        <CardTitle className="text-xl leading-relaxed">{currentQuestion.question}</CardTitle>
-                                    </div>
-                                    <Badge variant="outline">{currentQuestion.difficulty}</Badge>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {/* Voice Recording UI */}
-                                    <div className="bg-muted/30 rounded-lg p-8 text-center">
-                                        <div className={`h-24 w-24 rounded-full flex items-center justify-center mx-auto mb-4 transition-all ${isRecording ? 'gradient-primary animate-pulse' : 'bg-muted'}`}>
-                                            {isRecording ? (
-                                                <MicOff className="h-12 w-12 text-white" />
-                                            ) : (
-                                                <Mic className="h-12 w-12" />
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mb-4">
-                                            {isRecording ? 'Recording your answer...' : 'Click to record your answer'}
-                                        </p>
-                                        <Button
-                                            size="lg"
-                                            variant={isRecording ? 'destructive' : 'default'}
-                                            onClick={toggleRecording}
-                                            className="mb-4"
+                            <CardContent className="p-8">
+                                <div className="text-center mb-8">
+                                    {/* AI Interviewer Avatar */}
+                                    <div className="relative inline-block mb-6">
+                                        <div
+                                            className={`h-28 w-28 rounded-full flex items-center justify-center mx-auto transition-all duration-300 ${vapi.isSpeaking
+                                                ? 'gradient-primary shadow-lg shadow-primary/40'
+                                                : 'bg-muted'
+                                                }`}
                                         >
-                                            {isRecording ? (
-                                                <>
-                                                    <MicOff className="mr-2 h-5 w-5" />
-                                                    Stop Recording
-                                                </>
+                                            {vapi.callStatus === 'connecting' ? (
+                                                <Loader2 className="h-14 w-14 animate-spin text-white" />
+                                            ) : vapi.isSpeaking ? (
+                                                <Volume2 className="h-14 w-14 text-white animate-pulse" />
                                             ) : (
-                                                <>
-                                                    <Mic className="mr-2 h-5 w-5" />
-                                                    Start Recording
-                                                </>
+                                                <Radio className="h-14 w-14 text-muted-foreground" />
                                             )}
-                                        </Button>
-
-                                        {/* Live Transcript Display */}
-                                        {currentAnswer && (
-                                            <div className="bg-background/50 rounded-lg p-4 mb-4 text-left">
-                                                <p className="text-sm font-medium mb-2">Your Answer:</p>
-                                                <p className="text-sm">{currentAnswer}</p>
-                                            </div>
-                                        )}
-
-                                        {/* Text Input Fallback */}
-                                        {useTextInput && (
-                                            <div className="mt-4">
-                                                <textarea
-                                                    className="w-full min-h-[120px] p-3 rounded-lg border bg-background"
-                                                    placeholder="Type your answer here..."
-                                                    value={currentAnswer}
-                                                    onChange={(e) => setCurrentAnswer(e.target.value)}
-                                                />
-                                            </div>
-                                        )}
-
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="outline"
-                                                onClick={submitAnswer}
-                                                disabled={!currentAnswer.trim()}
-                                            >
-                                                Submit Answer & Continue
-                                            </Button>
-
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => setUseTextInput(!useTextInput)}
-                                            >
-                                                {useTextInput ? 'Use Voice' : 'Use Text'}
-                                            </Button>
                                         </div>
+
+                                        {/* Speaking ring animation */}
+                                        {vapi.isSpeaking && (
+                                            <div className="absolute inset-0 rounded-full border-4 border-primary/50 animate-ping" />
+                                        )}
                                     </div>
 
-                                    {/* Question Status */}
-                                    <div className="flex gap-2 flex-wrap">
-                                        {interview.questions.map((_: any, idx: number) => (
+                                    <h3 className="text-xl font-bold mb-1">
+                                        {vapi.callStatus === 'connecting'
+                                            ? 'Connecting to AI Interviewer...'
+                                            : vapi.isSpeaking
+                                                ? 'AI Interviewer is speaking...'
+                                                : vapi.isUserSpeaking
+                                                    ? 'Listening to your answer...'
+                                                    : 'AI Interviewer is ready'}
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground">
+                                        {vapi.isSpeaking
+                                            ? 'Please wait for the question to finish'
+                                            : 'Speak clearly and naturally to answer'}
+                                    </p>
+                                </div>
+
+                                {/* Volume Visualizer */}
+                                <div className="flex items-end justify-center gap-1 h-12 mb-6">
+                                    {Array.from({ length: 20 }).map((_, i) => {
+                                        const height = Math.max(
+                                            4,
+                                            Math.min(
+                                                48,
+                                                vapi.volumeLevel * 48 *
+                                                (0.5 + 0.5 * Math.sin((i / 20) * Math.PI))
+                                            )
+                                        );
+                                        return (
+                                            <div
+                                                key={i}
+                                                className={`w-2 rounded-full transition-all duration-75 ${vapi.isSpeaking || vapi.isUserSpeaking
+                                                    ? 'bg-primary'
+                                                    : 'bg-muted'
+                                                    }`}
+                                                style={{ height: `${height}px` }}
+                                            />
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Microphone status */}
+                                <div className="flex items-center justify-center gap-2 mb-6 text-sm text-muted-foreground">
+                                    {vapi.isUserSpeaking ? (
+                                        <>
+                                            <Mic className="h-4 w-4 text-green-500 animate-pulse" />
+                                            <span className="text-green-500 font-medium">
+                                                Recording your answer...
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MicOff className="h-4 w-4" />
+                                            <span>Microphone active — speak to answer</span>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Live Transcript Preview */}
+                                {vapi.messages.length > 0 && (
+                                    <div className="bg-muted/20 rounded-lg p-4 mb-6 max-h-48 overflow-y-auto space-y-2 text-left">
+                                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">
+                                            Transcript
+                                        </p>
+                                        {vapi.messages.slice(-6).map((msg, idx) => (
                                             <div
                                                 key={idx}
-                                                className={`h-8 w-8 rounded-full flex items-center justify-center text-xs ${idx < currentQuestionIndex
-                                                    ? 'bg-green-500 text-white'
-                                                    : idx === currentQuestionIndex
-                                                        ? 'gradient-primary text-white'
-                                                        : 'bg-muted text-muted-foreground'
+                                                className={`flex gap-2 text-sm ${msg.role === 'assistant'
+                                                    ? 'text-primary'
+                                                    : 'text-foreground'
                                                     }`}
                                             >
-                                                {idx < currentQuestionIndex ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
+                                                <span className="font-semibold shrink-0">
+                                                    {msg.role === 'assistant' ? '🤖 AI:' : '🧑 You:'}
+                                                </span>
+                                                <span>{msg.content}</span>
                                             </div>
                                         ))}
                                     </div>
+                                )}
+
+                                {/* Question status dots */}
+                                <div className="flex gap-2 flex-wrap justify-center mb-6">
+                                    {interview.questions.map((_: any, idx: number) => (
+                                        <div
+                                            key={idx}
+                                            className={`h-8 w-8 rounded-full flex items-center justify-center text-xs transition-all ${idx < answeredCount
+                                                ? 'bg-green-500 text-white'
+                                                : idx === answeredCount
+                                                    ? 'gradient-primary text-white'
+                                                    : 'bg-muted text-muted-foreground'
+                                                }`}
+                                        >
+                                            {idx < answeredCount ? (
+                                                <CheckCircle2 className="h-4 w-4" />
+                                            ) : (
+                                                idx + 1
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* End Call Button */}
+                                <div className="flex justify-center">
+                                    <Button
+                                        variant="destructive"
+                                        size="lg"
+                                        onClick={endCallManually}
+                                        disabled={vapi.callStatus === 'ending'}
+                                        className="gap-2"
+                                    >
+                                        {vapi.callStatus === 'ending' ? (
+                                            <>
+                                                <Loader2 className="h-5 w-5 animate-spin" />
+                                                Ending Interview...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <PhoneOff className="h-5 w-5" />
+                                                End Interview Early
+                                            </>
+                                        )}
+                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
                 )}
+
+                {/* Processing state after call ends */}
+                {vapi.callStatus === 'ended' && (
+                    <Card className="glass">
+                        <CardContent className="p-8 text-center">
+                            <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+                            <h3 className="text-xl font-bold mb-2">Interview Complete!</h3>
+                            <p className="text-muted-foreground">
+                                Processing your responses and generating feedback...
+                            </p>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
-            {/* Proctoring Panel - Only show when interview is active */}
-            {isInterviewActive && proctoring.permissionsGranted && (
+            {/* Proctoring Panel */}
+            {interviewStarted && proctoring.permissionsGranted && (
                 <ProctoringPanel
                     cameraStream={proctoring.cameraStream}
                     micActive={proctoring.micActive}
