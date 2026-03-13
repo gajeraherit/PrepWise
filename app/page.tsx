@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Brain, Mic, TrendingUp, Users, Shield, Sparkles, BarChart3, Clock, CheckCircle2, PlayCircle, Star, Award } from 'lucide-react';
+import { ArrowRight, Brain, Mic, TrendingUp, Users, Shield, Sparkles, BarChart3, Clock, CheckCircle2, Star, Award } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { MobileNav } from '@/components/mobile-nav';
@@ -17,7 +17,7 @@ export default function Home() {
           <Link href="/" className="flex items-center space-x-2 group">
             <div className="relative h-10 w-10">
               <Image
-                src="/logo.svg"
+                src="/logo.png"
                 alt="PrepWise Logo"
                 fill
                 className="object-contain"
@@ -86,12 +86,6 @@ export default function Home() {
                   <Button size="lg" className="h-14 px-8 text-lg rounded-2xl gradient-primary text-white shadow-xl shadow-primary/25 hover:shadow-2xl hover:shadow-primary/40 transition-all hover:-translate-y-1 group">
                     Start Practicing Free
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
-                  </Button>
-                </Link>
-                <Link href="#demo">
-                  <Button size="lg" variant="outline" className="h-14 px-8 text-lg rounded-2xl border-2 hover:bg-muted/50 transition-all">
-                    <PlayCircle className="mr-2 h-5 w-5" />
-                    How it Works
                   </Button>
                 </Link>
               </div>
@@ -346,10 +340,8 @@ export default function Home() {
             </div>
 
             <div className="flex gap-8 text-sm text-black dark:text-white font-medium">
-              <Link href="#" className="hover:text-primary transition-colors">Privacy</Link>
-              <Link href="#" className="hover:text-primary transition-colors">Terms</Link>
-              <Link href="#" className="hover:text-primary transition-colors">Twitter</Link>
-              <Link href="#" className="hover:text-primary transition-colors">LinkedIn</Link>
+              <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
             </div>
 
             <p className="text-sm text-black dark:text-white">

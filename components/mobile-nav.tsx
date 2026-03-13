@@ -56,7 +56,7 @@ export function MobileNav() {
                         <div className="flex items-center space-x-2">
                             <div className="relative h-8 w-8">
                                 <Image
-                                    src="/logo.svg"
+                                    src="/logo.png"
                                     alt="PrepWise"
                                     fill
                                     className="object-contain"

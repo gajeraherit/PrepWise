@@ -33,7 +33,7 @@ export function CandidateSidebar() {
             <div className="p-6 flex items-center gap-2 border-b border-border">
                 <div className="relative h-8 w-8">
                     <Image
-                        src="/logo.svg"
+                        src="/logo.png"
                         alt="PrepWise"
                         fill
                         className="object-contain"

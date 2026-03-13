@@ -140,7 +140,7 @@ export default function RegisterPage() {
                     <div className="flex justify-center mb-4">
                         <div className="relative h-16 w-16">
                             <Image
-                                src="/logo.svg"
+                                src="/logo.png"
                                 alt="PrepWise"
                                 fill
                                 className="object-contain"

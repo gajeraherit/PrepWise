@@ -71,7 +71,7 @@ export default function LoginPage() {
                     <div className="flex justify-center mb-4">
                         <div className="relative h-16 w-16">
                             <Image
-                                src="/logo.svg"
+                                src="/logo.png"
                                 alt="PrepWise"
                                 fill
                                 className="object-contain"
@@ -82,8 +82,8 @@ export default function LoginPage() {
                     <CardDescription>Sign in to your PrepWise account</CardDescription>
                 </CardHeader>
 
+                <form onSubmit={handleLogin}>
                 <CardContent className="space-y-4">
-                    <form id="login-form" onSubmit={handleLogin} className="space-y-4">
                         {error && (
                             <div className="p-3 text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-md">
                                 {error}
@@ -129,8 +129,6 @@ export default function LoginPage() {
                                 </button>
                             </div>
                         </div>
-                    </form>
-
                     <div className="flex items-center justify-between text-sm">
                         <Link href="/forgot-password" className="text-primary hover:underline">
                             Forgot password?
@@ -139,7 +137,7 @@ export default function LoginPage() {
                 </CardContent>
 
                 <CardFooter className="flex flex-col space-y-4">
-                    <Button type="submit" form="login-form" className="w-full gradient-primary text-white" disabled={loading}>
+                    <Button type="submit" className="w-full gradient-primary text-white" disabled={loading}>
                         {loading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -157,6 +155,7 @@ export default function LoginPage() {
                         </Link>
                     </p>
                 </CardFooter>
+                </form>
             </Card>
         </div>
     );
