@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/config';
 import { Collections } from '@/lib/firebase/schema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,7 +46,26 @@ export default function FeedbackListPage() {
                     return bTime - aTime;
                 });
 
-                setFeedbacks(data);
+                // For each completed interview, try to load the feedback score
+                const enrichedRaw = await Promise.all(
+                    data.map(async (item: any) => {
+                        try {
+                            const fbDoc = await getDoc(doc(db, Collections.FEEDBACK, item.id));
+                            if (fbDoc.exists()) {
+                                const fbData = fbDoc.data();
+                                // Skip interviews where no answers were given
+                                if (fbData.noAnswers) return null;
+                                return { ...item, overallScore: fbData.overallScore ?? null };
+                            }
+                        } catch {
+                            // no feedback yet
+                        }
+                        return { ...item, overallScore: null };
+                    })
+                );
+
+                // Remove nulls (no-answer interviews)
+                setFeedbacks(enrichedRaw.filter(Boolean));
             } catch (error) {
                 console.error('Error loading feedback:', error);
             } finally {
@@ -107,9 +126,21 @@ export default function FeedbackListPage() {
                                             <h3 className="font-bold text-lg mb-1">{item.jobRole}</h3>
                                             <p className="text-sm text-muted-foreground line-clamp-1">{item.jobDescription?.substring(0, 50)}...</p>
                                         </div>
-                                        <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                            Completed
-                                        </Badge>
+                                        <div className="flex flex-col items-end gap-2">
+                                            <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                                Completed
+                                            </Badge>
+                                            {item.overallScore !== null ? (
+                                                <span className={`text-sm font-bold ${
+                                                    item.overallScore >= 80 ? 'text-green-500' :
+                                                    item.overallScore >= 60 ? 'text-yellow-500' : 'text-red-500'
+                                                }`}>
+                                                    Score: {item.overallScore}/100
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">Score pending</span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="space-y-2 text-sm text-muted-foreground mb-6">

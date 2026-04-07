@@ -47,9 +47,29 @@ export default function CandidateDashboardPage() {
                 const totalMinutes = interviews.reduce((sum: number, i: any) => sum + (i.duration || 0), 0);
                 const skills = new Set(interviews.flatMap((i: any) => i.techStack || [])).size;
 
+                // Load feedback to compute average score
+                let avgScore = 0;
+                try {
+                    const feedbackQuery = query(
+                        collection(db, Collections.FEEDBACK),
+                        where('candidateId', '==', user.uid)
+                    );
+                    const feedbackSnapshot = await getDocs(feedbackQuery);
+                    if (!feedbackSnapshot.empty) {
+                        const scores = feedbackSnapshot.docs
+                            .map(d => d.data().overallScore)
+                            .filter((s: any) => typeof s === 'number');
+                        if (scores.length > 0) {
+                            avgScore = Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length);
+                        }
+                    }
+                } catch {
+                    // feedback collection might not exist yet — that's OK
+                }
+
                 setStats({
                     completedInterviews: completed,
-                    averageScore: 0, // Will be calculated from feedback later
+                    averageScore: avgScore,
                     totalHours: Math.round(totalMinutes / 60),
                     skillsAssessed: skills,
                 });

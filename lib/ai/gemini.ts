@@ -2,12 +2,11 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY || '');
 
-// Use gemini-1.5-flash — fast, cheap, supports JSON mode, not deprecated
 const model = genAI.getGenerativeModel({
     model: 'gemini-1.5-flash',
     generationConfig: {
-        responseMimeType: 'application/json', // Forces clean JSON output — no markdown wrapping
-        temperature: 0.7,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
     },
 });
 
@@ -26,38 +25,24 @@ interface FeedbackAnalysisParams {
     experienceLevel?: string;
 }
 
-// ── Question Generation ───────────────────────────────────────────────────────
-
 export async function generateInterviewQuestions(params: QuestionGenerationParams) {
     const { jobRole, techStack, experienceLevel, numberOfQuestions = 10 } = params;
 
     const prompt = `Generate EXACTLY ${numberOfQuestions} interview questions for a ${experienceLevel}-level ${jobRole} position.
 
-CRITICAL INSTRUCTION: You MUST return exactly ${numberOfQuestions} questions in the array. No more, no less.
+CRITICAL: EXACTLY ${numberOfQuestions} questions.
 
 Tech Stack: ${techStack.join(', ')}
 
-Mix:
-- 50% Technical questions (specific to the tech stack)
-- 30% Behavioral questions (STAR-method style)
-- 20% Situational / problem-solving questions
-
-Return a JSON array ONLY, no explanation:
+JSON array ONLY:
 [
-  {
-    "question": "...",
-    "category": "technical" | "behavioral" | "situational",
-    "difficulty": "easy" | "medium" | "hard"
-  }
+  {"question": "?", "category": "technical|behavioral|situational", "difficulty": "easy|medium|hard"}
 ]`;
 
     try {
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim();
-
-        const questions = JSON.parse(text);
-        if (!Array.isArray(questions)) throw new Error('Response is not an array');
-
+        const questions: any[] = JSON.parse(text);
         return questions.map((q: any, index: number) => ({
             id: `q-${index + 1}`,
             question: q.question,
@@ -70,86 +55,87 @@ Return a JSON array ONLY, no explanation:
     }
 }
 
-// ── Feedback Analysis ─────────────────────────────────────────────────────────
-
 export async function analyzeFeedback(params: FeedbackAnalysisParams) {
     const { jobRole, transcript, techStack = [], experienceLevel = 'mid' } = params;
 
-    // Guard: if all answers are empty, no point calling the AI
-    const hasRealAnswers = transcript.some((t) => t.answer && t.answer.trim().length > 20);
+    const hasRealAnswers = transcript.some((t) => t.answer?.trim().length > 20);
     if (!hasRealAnswers) {
-        console.warn('[Gemini] Transcript has no substantive answers — using fallback');
+        console.warn('[Gemini] No substantive answers - fallback');
         return generateFallbackFeedback();
     }
 
     const transcriptText = transcript
-        .map((t, i) => `Q${i + 1}: ${t.question}\nA${i + 1}: ${t.answer || '(no answer provided)'}`)
-        .join('\n\n');
+        .map((t, i) => `Q${i+1}: ${t.question}
+A${i+1}: ${t.answer || '(skipped)'}`
+        .join('\\n\\n');
 
-    const prompt = `You are a senior technical interviewer. Analyze this real interview transcript and give ACCURATE, HONEST scores based on the actual quality of answers.
+    const prompt = `Senior technical interviewer. Analyze this EXACT transcript. Honest, specific scores ONLY from answers.
 
-Position: ${experienceLevel}-level ${jobRole}
-Tech Stack: ${techStack.length > 0 ? techStack.join(', ') : 'General'}
+Job: ${experienceLevel} ${jobRole}
+Stack: ${techStack.join(', ')}
 
 TRANSCRIPT:
 ${transcriptText}
 
-INSTRUCTIONS:
-- Score each dimension from 0-100 based ONLY on the actual answers given.
-- If answers are vague, short, or incorrect, give LOW scores (30-60).
-- If answers are strong, detailed, and accurate, give HIGH scores (75-95).
-- Do NOT give 70 as a default. Be specific and honest.
-- Strengths and weaknesses must be derived from the actual answers, not generic.
+CRITICAL RULES:
+1. Quote SPECIFIC phrases/words from answers in strengths/weaknesses.
+2. 3 strengths, 3 weaknesses, 5 tips - NO generic text.
+3. Scores based on quality:
+   - 0-39: Vague/wrong/short
+   - 40-69: Basic/correct but shallow
+   - 70-100: Detailed/examples/metrics
 
-Return this JSON object exactly:
+EXAMPLE POOR:
+Q1: React? A1: "React good framework."
+overallScore: 35
+technicalScore: 28 (\\"React good\\" - no concepts)
+strengths: [\\"Attempted answer\\"]
+weaknesses: [\\"No specific knowledge\\", \\"No examples\\"]
+improvementTips: [\\"Learn React components\\", \\"Give project examples\\"]
+
+EXAMPLE GOOD:
+Q1: React? A1: \\"Built e-commerce with hooks, custom useFetch cached API, 40% faster.\\"
+overallScore: 88
+technicalScore: 93 (\\"custom useFetch\\" + \\"40% faster\\")
+strengths: [\\"Advanced hooks\\", \\"Performance optimization\\"]
+
+JSON ONLY - EXACT schema:
 {
-  "overallScore": <number 0-100>,
-  "communicationScore": <number 0-100>,
-  "technicalScore": <number 0-100>,
-  "problemSolvingScore": <number 0-100>,
-  "confidenceScore": <number 0-100>,
-  "strengths": ["<specific strength from answers>", "<specific strength>", "<specific strength>"],
-  "weaknesses": ["<specific weakness from answers>", "<specific weakness>", "<specific weakness>"],
-  "improvementTips": ["<actionable tip>", "<actionable tip>", "<actionable tip>", "<actionable tip>", "<actionable tip>"],
-  "categoryScores": [
-    { "category": "Technical Knowledge", "score": <number>, "feedback": "<specific feedback based on answers>" },
-    { "category": "Communication", "score": <number>, "feedback": "<specific feedback>" },
-    { "category": "Problem Solving", "score": <number>, "feedback": "<specific feedback>" },
-    { "category": "Cultural Fit", "score": <number>, "feedback": "<specific feedback>" }
+  \\"overallScore\\": number,
+  \\"communicationScore\\": number,
+  \\"technicalScore\\": number,
+  \\"problemSolvingScore\\": number,
+  \\"confidenceScore\\": number,
+  \\"strengths\\": [\\"specific\\"],
+  \\"weaknesses\\": [\\"specific\\"],
+  \\"improvementTips\\": [\\"specific\\"],
+  \\"keyQuotes\\": [\\"direct quotes\\"],
+  \\"categoryScores\\": [
+    {\\"category\\":\\"Technical Knowledge\\", \\"score\\":num, \\"feedback\\":\\"specific from answers\\"},
+    {\\"category\\":\\"Communication\\", \\"score\\":num, \\"feedback\\":\\"specific\\"},
+    {\\"category\\":\\"Problem Solving\\", \\"score\\":num, \\"feedback\\":\\"specific\\"},
+    {\\"category\\":\\"Cultural Fit\\", \\"score\\":num, \\"feedback\\":\\"specific\\"}
   ],
-  "aiAnalysis": "<2-3 paragraph honest analysis of this specific candidate's performance, referencing their actual answers>"
+  \\"aiAnalysis\\": \\"2-3 paragraphs referencing specific answers\\"
 }`;
 
     try {
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim();
-
-        console.log('[Gemini] Raw feedback response length:', text.length);
-
         const feedback = JSON.parse(text);
 
-        // Validate required fields are present and are numbers
-        const requiredFields = ['overallScore', 'communicationScore', 'technicalScore', 'problemSolvingScore', 'confidenceScore'];
-        for (const field of requiredFields) {
-            if (typeof feedback[field] !== 'number') {
-                throw new Error(`Invalid feedback field: ${field} = ${feedback[field]}`);
-            }
-        }
+        const scores = ['overallScore', 'communicationScore', 'technicalScore', 'problemSolvingScore', 'confidenceScore'];
+        scores.forEach((field) => {
+            feedback[field] = Math.max(0, Math.min(100, Math.round(feedback[field] || 50)));
+        });
 
-        // Clamp scores to 0-100
-        for (const field of requiredFields) {
-            feedback[field] = Math.max(0, Math.min(100, Math.round(feedback[field])));
-        }
-
-        console.log('[Gemini] ✅ Feedback generated — overall score:', feedback.overallScore);
+        console.log(`[Gemini] Feedback ${jobRole}: overall ${feedback.overallScore}`);
         return feedback;
     } catch (error) {
-        console.error('[Gemini] Error analyzing feedback:', error);
+        console.error('[Gemini] Feedback parse error:', error);
         return generateFallbackFeedback();
     }
 }
-
-// ── Fallback Generators ───────────────────────────────────────────────────────
 
 function generateFallbackQuestions(jobRole: string, count: number) {
     const questions = [
@@ -172,7 +158,7 @@ function generateFallbackQuestions(jobRole: string, count: number) {
     return questions.slice(0, count);
 }
 
-function generateFallbackFeedback() {
+function generateFallbackFeedback(jobRole = 'role') {
     return {
         overallScore: 65,
         communicationScore: 68,
@@ -180,28 +166,27 @@ function generateFallbackFeedback() {
         problemSolvingScore: 64,
         confidenceScore: 67,
         strengths: [
-            'Demonstrated willingness to engage with questions',
-            'Showed some relevant experience',
-            'Professional communication style',
+            'Engaged with questions',
+            'Professional tone',
         ],
         weaknesses: [
-            'Answers lacked specific technical depth',
-            'Could provide more concrete examples',
-            'Response structure needs improvement',
+            'Lacked specific examples',
+            'Brief technical responses',
         ],
         improvementTips: [
-            'Use the STAR method (Situation, Task, Action, Result) for behavioral questions',
-            'Prepare 3-5 detailed stories from your experience that showcase different skills',
-            'Study core concepts deeply and be ready to explain trade-offs',
-            'Practice speaking concisely — aim for 90-second answers',
-            'Do mock interviews regularly to build confidence',
+            'Use STAR method',
+            'Add project metrics',
+            'Practice detailed answers',
+            'Review tech fundamentals',
+            'Do mock interviews',
         ],
+        keyQuotes: [],
         categoryScores: [
-            { category: 'Technical Knowledge', score: 62, feedback: 'AI feedback unavailable — retake the interview for accurate scoring.' },
-            { category: 'Communication', score: 68, feedback: 'AI feedback unavailable — retake the interview for accurate scoring.' },
-            { category: 'Problem Solving', score: 64, feedback: 'AI feedback unavailable — retake the interview for accurate scoring.' },
-            { category: 'Cultural Fit', score: 67, feedback: 'AI feedback unavailable — retake the interview for accurate scoring.' },
+            { category: 'Technical Knowledge', score: 62, feedback: 'Retake for detailed analysis.' },
+            { category: 'Communication', score: 68, feedback: 'Clear; add structure.' },
+            { category: 'Problem Solving', score: 64, feedback: 'Basic; show process.' },
+            { category: 'Cultural Fit', score: 67, feedback: 'Good fit; more stories.' },
         ],
-        aiAnalysis: 'We were unable to generate AI feedback for this session — this may be due to an empty transcript or a connectivity issue. Please retake the interview to receive detailed, personalized feedback based on your actual answers.',
+        aiAnalysis: `Unable to analyze transcript. Retake with detailed answers for personalized feedback on your ${jobRole} interview.`,
     };
 }

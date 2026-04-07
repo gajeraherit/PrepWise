@@ -18,6 +18,7 @@ export default function FeedbackPage() {
     const [loading, setLoading] = useState(true);
     const [interview, setInterview] = useState<any>(null);
     const [feedback, setFeedback] = useState<any>(null);
+    const [noAnswers, setNoAnswers] = useState(false);
 
     // ... (existing useEffect) ...
 
@@ -136,37 +137,18 @@ export default function FeedbackPage() {
                     const interviewData = { id: interviewDoc.id, ...interviewDoc.data() };
                     setInterview(interviewData);
 
-                    // Try to load feedback (if exists)
-                    const feedbackQuery = await getDoc(doc(db, Collections.FEEDBACK, params.id as string));
-                    if (feedbackQuery.exists()) {
-                        setFeedback(feedbackQuery.data());
-                    } else {
-                        // Generate placeholder feedback for demo
-                        setFeedback({
-                            overallScore: 75,
-                            communicationScore: 80,
-                            technicalScore: 70,
-                            problemSolvingScore: 75,
-                            confidenceScore: 80,
-                            strengths: [
-                                'Clear and articulate communication',
-                                'Strong understanding of fundamental concepts',
-                                'Good problem-solving approach',
-                            ],
-                            weaknesses: [
-                                'Could provide more specific examples',
-                                'Technical depth could be improved in advanced topics',
-                                'Consider using the STAR method more consistently',
-                            ],
-                            improvementTips: [
-                                'Practice explaining complex concepts in simpler terms',
-                                'Prepare 3-5 detailed project examples using the STAR method',
-                                'Research advanced topics in your tech stack',
-                                'Work on time management during technical questions',
-                                'Practice mock interviews regularly to build confidence',
-                            ],
-                        });
+                    // Try to load feedback doc
+                    const feedbackDoc = await getDoc(doc(db, Collections.FEEDBACK, params.id as string));
+                    if (feedbackDoc.exists()) {
+                        const feedbackData = feedbackDoc.data();
+                        if (feedbackData.noAnswers) {
+                            // Candidate ended without giving any answers
+                            setNoAnswers(true);
+                        } else {
+                            setFeedback(feedbackData);
+                        }
                     }
+                    // If no feedback doc at all — leave both null (handled in render)
                 }
             } catch (error) {
                 console.error('Error loading feedback:', error);
@@ -194,7 +176,7 @@ export default function FeedbackPage() {
         );
     }
 
-    if (!interview || !feedback) {
+    if (!interview || (!feedback && !noAnswers)) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4">
                 <Card className="max-w-md">
@@ -203,10 +185,42 @@ export default function FeedbackPage() {
                     </CardHeader>
                     <CardContent>
                         <p className="text-muted-foreground mb-4">No feedback available for this interview yet.</p>
-                        <Button onClick={() => router.push('/candidate/history')}>
+                        <Button onClick={() => router.push('/candidate/dashboard')}>
                             <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back to History
+                            Back to Dashboard
                         </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    if (noAnswers) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4">
+                <Card className="max-w-md glass">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <AlertCircle className="h-5 w-5 text-yellow-500" />
+                            Interview Not Completed
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground mb-2">
+                            You ended this interview without answering any questions, so no feedback report was generated.
+                        </p>
+                        <p className="text-muted-foreground mb-6">
+                            Start a new interview and make sure to answer the questions to receive your feedback report.
+                        </p>
+                        <div className="flex gap-3">
+                            <Button variant="outline" onClick={() => router.push('/candidate/dashboard')}>
+                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                Dashboard
+                            </Button>
+                            <Button className="gradient-primary text-white" onClick={() => router.push('/candidate/interview/new')}>
+                                Start New Interview
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
             </div>

@@ -181,6 +181,31 @@ export default function InterviewPage() {
 
     // ── Finish interview (after Vapi call ends) ──────────────────────
     const finishInterview = async (vapiMessages: { role: string; content: string }[]) => {
+        const interviewId = params.id as string;
+
+        // ── Guard: did the candidate actually speak? ─────────────────
+        const userMessages = vapiMessages.filter((m) => m.role === 'user');
+        if (userMessages.length === 0) {
+            proctoring.stopRecording();
+            proctoring.exitFullscreen();
+
+            // Mark as cancelled (not completed) — no answers were given
+            try {
+                await updateDoc(doc(db, Collections.INTERVIEWS, interviewId), {
+                    status: 'cancelled',
+                    completedAt: new Date(),
+                });
+            } catch { /* ignore */ }
+
+            toast({
+                title: 'No Answers Recorded',
+                description: "You didn't answer any questions. The interview was not submitted.",
+                variant: 'destructive',
+            });
+            setTimeout(() => router.push('/candidate/dashboard'), 2500);
+            return;
+        }
+
         try {
             const videoBlob = await proctoring.stopRecording();
             proctoring.exitFullscreen();
@@ -192,7 +217,7 @@ export default function InterviewPage() {
                 try {
                     const formData = new FormData();
                     formData.append('video', videoBlob, 'recording.webm');
-                    formData.append('interviewId', params.id as string);
+                    formData.append('interviewId', interviewId);
 
                     const uploadResponse = await fetch('/api/upload-video', {
                         method: 'POST',
@@ -211,10 +236,11 @@ export default function InterviewPage() {
             // Parse Vapi transcript into our Q&A format
             const finalTranscript = parseVapiTranscript(
                 vapiMessages as { role: string; content: string }[],
-                interview.questions
+                interview.questions || []
             );
 
-            await updateDoc(doc(db, Collections.INTERVIEWS, params.id as string), {
+            // Mark interview as completed
+            await updateDoc(doc(db, Collections.INTERVIEWS, interviewId), {
                 status: 'completed',
                 completedAt: new Date(),
                 transcript: finalTranscript,
@@ -226,35 +252,46 @@ export default function InterviewPage() {
                 description: 'Generating your feedback report...',
             });
 
-            const feedbackResponse = await fetch('/api/interviews/generate-feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    interviewId: params.id,
-                    transcript: finalTranscript,
-                    jobRole: interview.jobRole,
-                    techStack: interview.techStack,
-                    experienceLevel: interview.experienceLevel,
-                }),
+            // Generate AI feedback based on actual answers
+            try {
+                await fetch('/api/interviews/generate-feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        interviewId,
+                        candidateId: interview.candidateId,
+                        transcript: finalTranscript,
+                        jobRole: interview.jobRole,
+                        techStack: interview.techStack,
+                        experienceLevel: interview.experienceLevel,
+                    }),
+                });
+            } catch (feedbackErr) {
+                console.error('Feedback generation error (non-fatal):', feedbackErr);
+            }
+
+            toast({
+                title: 'Feedback Ready!',
+                description: 'Redirecting to your feedback report...',
             });
 
-            if (feedbackResponse.ok) {
-                toast({
-                    title: 'Feedback Generated!',
-                    description: 'Redirecting to your feedback...',
-                });
-                setTimeout(() => router.push(`/candidate/feedback/${params.id}`), 2000);
-            } else {
-                throw new Error('Failed to generate feedback');
-            }
+            setTimeout(() => router.push(`/candidate/feedback/${interviewId}`), 2000);
+
         } catch (error) {
             console.error('Error finishing interview:', error);
+
+            try {
+                await updateDoc(doc(db, Collections.INTERVIEWS, interviewId), {
+                    status: 'completed',
+                    completedAt: new Date(),
+                });
+            } catch { /* ignore */ }
+
             toast({
-                title: 'Interview Completed',
-                description: 'Feedback generation failed. Please try again later.',
-                variant: 'destructive',
+                title: 'Interview Ended',
+                description: 'Redirecting to your feedback...',
             });
-            setTimeout(() => router.push('/candidate/dashboard'), 2000);
+            setTimeout(() => router.push(`/candidate/feedback/${interviewId}`), 2000);
         }
     };
 
